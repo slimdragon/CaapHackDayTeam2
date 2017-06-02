@@ -45,5 +45,7 @@ namespace PicklesCarSearch.Model
         public string RowKey { get; set; }
         public DateTime Timestamp { get; set; }
         public string ETag { get; set; }
+        public string pageurl { get; set; }
+
     }
 }

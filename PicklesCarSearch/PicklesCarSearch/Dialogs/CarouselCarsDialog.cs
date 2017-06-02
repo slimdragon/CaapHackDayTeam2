@@ -26,7 +26,6 @@
 
             await context.PostAsync(reply);
 
-            //context.Wait<Car[]>(this.MessageReceivedAsync);
             context.Done<Car[]>(msg);
         }
 
@@ -34,12 +33,23 @@
         {
             List<Attachment> items = new List<Attachment>();
 
+            int counter = 0;
+
             foreach (Car car in cars)
             {
-                items.Add(GetHeroCard(car.make, car.model, 
-                                      GetDescription(car.branchaddress, car.branchname, car.colour, car.price), 
-                                      new CardImage(url: car.bloblurl), 
-                                      new CardAction(ActionTypes.OpenUrl, "Learn more", value: "https://www.pickles.com.au/cars/item/-/details/CP-01-16--Built-01-16--Toyota--Corolla--ZRE182R-Ascent-S-CVT--Hatchback--5-Seats--5-Doors/402287710")));
+                if (counter < 10)
+                {
+                    items.Add(GetHeroCard(car.make, car.model,
+                                          GetDescription(car.branchaddress, car.branchname, car.colour, car.price),
+                                          new CardImage(url: car.bloblurl),
+                                          new CardAction(ActionTypes.OpenUrl, "Learn more", value: car.pageurl)));
+
+                    counter++;
+                }
+                else
+                {
+                    break;
+                }
             }
 
             return items;
@@ -47,7 +57,7 @@
 
         private static string GetDescription(string branchaddress, string branchname, string colour, float price)
         {
-            return $"Color: {colour}. \nPrice: {price}. \nBranch: {branchname}. \nAddress: {branchaddress}.";
+            return $"Color: {colour}. Price: {price}. Branch: {branchname}. Address: {branchaddress}.";
         }
 
         private static Attachment GetHeroCard(string title, string subtitle, string text, CardImage cardImage, CardAction cardAction)

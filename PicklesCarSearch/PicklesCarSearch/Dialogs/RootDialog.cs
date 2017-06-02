@@ -10,12 +10,15 @@ using Newtonsoft.Json;
 using PicklesCarSearch.Model;
 using System.Collections.Generic;
 using System.Threading;
+using System.IO;
+using PicklesCarSearch.Services;
 
 namespace PicklesCarSearch.Dialogs
 {
     [Serializable]
     public class RootDialog : IDialog<object>
     {
+        private readonly MicrosoftCognitiveSpeechService speechService = new MicrosoftCognitiveSpeechService();
         List<string> years;
         string selectedMake;
 
@@ -23,40 +26,144 @@ namespace PicklesCarSearch.Dialogs
         {
             context.PostAsync("Welcome to Pickles Auctions. Please start your search by uploading a car image.");
 
-            context.Wait(ImageReceivedAsync);
+            context.Wait(MediaReceivedAsync);
 
             return Task.CompletedTask;
         }
 
-        private async Task ImageReceivedAsync(IDialogContext context, IAwaitable<object> result)
+        private async Task MediaReceivedAsync(IDialogContext context, IAwaitable<object> result)
         {
             var activity = await result as Activity;
 
             if (activity.Attachments.Count > 0)
             {
                 var contenttype = activity.Attachments[0].ContentType;
-                var contentUrl = activity.Attachments[0].ContentUrl;
 
-                string json = PrepareOptionsRequest(contentUrl);
-
-                var options = GetOptions(json);
-
-                List<string> makes;
-
-                ExtractInfo(options, out makes, out years);
-
-                if (makes.Count > 0 && years.Count > 0)
+                if (contenttype.Equals("application/octet-stream"))
                 {
-                    PresentMakesOptions(context, makes);
-
-                    await context.PostAsync($"Thanks, let's see what we have for your car...");
+                    await HandleSpeech(context, activity.Attachments[0], activity.ServiceUrl);
                 }
-                else
+                else if (contenttype.Contains("image"))
                 {
-                    await context.PostAsync($"Sorry, we couldn't find any cars matching this car. Please try again.");
+                    var contentUrl = activity.Attachments[0].ContentUrl;
 
-                    context.Wait(this.ImageReceivedAsync);
+                    await HandleImage(context, activity.Attachments[0], activity.ServiceUrl);
                 }
+            }
+            else
+            {
+                if (activity.Type == ActivityTypes.Message)
+                {
+                    string make;
+                    int year;
+
+                    var text = activity.Text;
+
+                    ProcessText(text, out make, out year);
+
+                    if (make != null && year > 0)
+                    {
+                        Car[] cars = this.GetCarData(make, year.ToString());
+
+                        if (cars.Length > 0)
+                        {
+                            await context.Forward(new CarouselCarsDialog(), this.ResumeAfterCarouselCarsDialog, cars, CancellationToken.None);
+                        }
+                        else
+                        {
+                            await context.PostAsync("Sorry, we couldn't find any cars matching your criteria. Try giving the car model and year only.");
+                        }
+
+                    }
+                }
+            }
+        }
+
+        private async Task HandleSpeech(IDialogContext context, Attachment attachment, string serviceUrl)
+        {
+            string make;
+            int year;
+
+            await context.PostAsync("Oh! Seems you want to search by talking to me :) Good Job, let's see what we have...");
+
+            var connector = new ConnectorClient(new Uri(serviceUrl));
+
+            var stream = await GetAudioStream(connector, attachment);
+
+            var text = await this.speechService.GetTextFromAudioAsync(stream);
+
+            ProcessText(text, out make, out year);
+
+            if (make != null)
+            {
+                Car[] cars = this.GetCarData(make, year.ToString());
+
+                await context.Forward(new CarouselCarsDialog(), this.ResumeAfterCarouselCarsDialog, cars, CancellationToken.None);
+            }
+        }
+
+        private void ProcessText(string text, out string make, out int year)
+        {
+            make = null;
+            year = -1;
+
+            if (!string.IsNullOrEmpty(text))
+            {
+                var words = text.Split(' ');
+                
+                foreach(string word in words)
+                {
+                    if (int.TryParse(word, out year)){}
+                    else
+                    {
+                        // check if the word is a car make using some congnitive service
+                        make = word;
+                    }
+                   
+                }
+            }
+        }
+
+        private static async Task<Stream> GetAudioStream(ConnectorClient connector, Attachment audioAttachment)
+        {
+            using (var httpClient = new HttpClient())
+            {
+                var token = await (connector.Credentials as MicrosoftAppCredentials).GetTokenAsync();
+                // The Skype attachment URLs are secured by JwtToken,
+                // you should set the JwtToken of your bot as the authorization header for the GET request your bot initiates to fetch the image.
+                // https://github.com/Microsoft/BotBuilder/issues/662
+                var uri = new Uri(audioAttachment.ContentUrl);
+                if (uri.Host.EndsWith("skype.com") && uri.Scheme == "https")
+                {
+                    httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+                }
+
+                return await httpClient.GetStreamAsync(uri);
+            }
+        }
+
+        private async Task HandleImage(IDialogContext context, Attachment attachment, string serviceUrl)
+        {
+            string json = await PrepareOptionsRequest(attachment, serviceUrl);
+
+            var options = GetOptions(json);
+
+            List<string> makes;
+
+            ExtractInfo(options, out makes, out years);
+
+            if (makes.Count > 0 && years.Count > 0)
+            {
+                PresentMakesOptions(context, makes);
+
+                await context.PostAsync($"Thanks, let's see what we have for your car...");
+            }
+            else
+            {
+                await context.PostAsync($"Sorry, we couldn't find any cars matching this car. Please try again.");
+
+                context.Wait(this.MediaReceivedAsync);
             }
         }
 
@@ -77,7 +184,7 @@ namespace PicklesCarSearch.Dialogs
             {
                 await context.PostAsync($"Ooops! Too many attemps :(. But don't worry, I'm handling that exception and you can try again!");
 
-                context.Wait(this.ImageReceivedAsync);
+                context.Wait(this.MediaReceivedAsync);
             }
         }
 
@@ -102,7 +209,7 @@ namespace PicklesCarSearch.Dialogs
             { 
                 await context.PostAsync($"Ooops! Too many attemps :(. But don't worry, I'm handling that exception and you can try again!");
 
-                context.Wait(this.ImageReceivedAsync);
+                context.Wait(this.MediaReceivedAsync);
             }
         }
 
@@ -113,6 +220,8 @@ namespace PicklesCarSearch.Dialogs
                 var message = await result;
 
                 await context.PostAsync("Thanks for contacting our Pickles Auctions, come again!");
+
+                context.Done(message);
             }
             catch (Exception ex)
             {
@@ -120,7 +229,7 @@ namespace PicklesCarSearch.Dialogs
             }
             finally
             {
-                context.Wait(this.ImageReceivedAsync);
+                //context.Wait(this.MediaReceivedAsync);
             }
         }
 
@@ -149,17 +258,38 @@ namespace PicklesCarSearch.Dialogs
             }
         }
 
-        private static string PrepareOptionsRequest(string contentUrl)
+        private async Task<string> PrepareOptionsRequest(Attachment attachment, string serviceUrl)
         {
-            var webClient = new WebClient();
+            if (attachment?.ContentUrl != null)
+            {
+                using (var connectorClient = new ConnectorClient(new Uri(serviceUrl)))
+                {
+                    var token = await(connectorClient.Credentials as MicrosoftAppCredentials).GetTokenAsync();
+                    var uri = new Uri(attachment.ContentUrl);
+                    using (var httpClient = new HttpClient())
+                    {
+                        if (uri.Host.EndsWith("skype.com") && uri.Scheme == Uri.UriSchemeHttps)
+                        {
+                            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                            httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+                        }
+                        //else
+                        //{
+                        //    httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(attachment.ContentType));
+                        //}
 
-            byte[] imageBytes = webClient.DownloadData(contentUrl);
+                        var attachmentData = await httpClient.GetByteArrayAsync(uri);
 
-            var image = Convert.ToBase64String(imageBytes);
+                        var image = Convert.ToBase64String(attachmentData);
 
-            var json = @"{ 'image':'" + image + "' }";
+                        var json = @"{ 'image':'" + image + "' }";
 
-            return json;
+                        return json;
+                    }
+                }
+            }
+
+            return null;
         }
 
         public Rootobject GetOptions(string image)
@@ -188,7 +318,7 @@ namespace PicklesCarSearch.Dialogs
 
         public Car[] GetCarData(string make, string year)
         {
-            string url = "https://pickles-inventory.azurewebsites.net/api/HttpTriggerCSharp1?code=7gEt1hpX4bKr1/5zzzxR5x2Q4MwIssf7zDXhrDbY47HZ3At9wqgKMg==";
+            string url = "https://pickles-inventory.azurewebsites.net/api/pickles-inventory?code=rgew9MX0bTyLt7rfsX0y9NChqL7w1q6QaIulPPvTYAjrfbuaJpoaiA==";
 
             HttpClient client = new HttpClient();
 
