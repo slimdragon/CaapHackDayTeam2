@@ -27,9 +27,15 @@ public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceW
     string make = data.make;
     string year = data.year;
 
+    if (year == null)
+    {
+        year = "";
+    }
+
     var json = GetSearchJsonResults(make, year);
 
     return req.CreateResponse(HttpStatusCode.OK, json);
+
 }
 
 static string GetSearchJsonResults(string make, string year)
