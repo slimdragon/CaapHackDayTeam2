@@ -219,19 +219,37 @@ namespace PicklesCarSearch.Dialogs
             {
                 var message = await result;
 
-                await context.PostAsync("Thanks for contacting our Pickles Auctions, come again!");
-
-                context.Done(message);
+                PromptDialog.Choice(context, this.OnFinalDecision, new List<string>() { "Restart", "Finish" }, "Would you like to do another search? or call it off for the day?", "Not a valid option", 3);
             }
             catch (Exception ex)
             {
                 await context.PostAsync($"Failed with message: {ex.Message}");
             }
-            finally
+        }
+
+        private async Task OnFinalDecision(IDialogContext context, IAwaitable<string> result)
+        {
+            try
             {
-                //context.Wait(this.MediaReceivedAsync);
+                string selection = await result;
+
+                if (selection == "Restart")
+                {
+                    context.Done("");
+                }
+                else
+                {
+                    await context.PostAsync("Thanks for contacting Pickles Auctions, come again!");
+                }                
+            }
+            catch (TooManyAttemptsException ex)
+            {
+                await context.PostAsync($"Ooops! Too many attemps :(. But don't worry, I'm handling that exception and you can try again!");
+
+                context.Done("");
             }
         }
+
 
         private void ExtractInfo(Rootobject obj, out List<string> makes, out List<string> years)
         {
