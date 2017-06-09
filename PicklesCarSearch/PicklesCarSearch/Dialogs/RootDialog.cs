@@ -50,33 +50,36 @@ namespace PicklesCarSearch.Dialogs
                     await HandleImage(context, activity.Attachments[0], activity.ServiceUrl);
                 }
             }
-            else
-            {
-                if (activity.Type == ActivityTypes.Message)
-                {
-                    string make;
-                    int year;
+            //else
+            //{
+            //    if (activity.Type == ActivityTypes.Message)
+            //    {
+            //        string make;
+            //        int year;
 
-                    var text = activity.Text;
+            //        var text = activity.Text;
 
-                    ProcessText(text, out make, out year);
+            //        ProcessText(text, out make, out year);
 
-                    if (make != null && year > 0)
-                    {
-                        Car[] cars = this.GetCarData(make, year.ToString());
+            //        if (make != null)
+            //        {
+            //            Car[] cars = this.GetCarData(make, year.ToString());
 
-                        if (cars.Length > 0)
-                        {
-                            await context.Forward(new CarouselCarsDialog(), this.ResumeAfterCarouselCarsDialog, cars, CancellationToken.None);
-                        }
-                        else
-                        {
-                            await context.PostAsync("Sorry, we couldn't find any cars matching your criteria. Try giving the car model and year only.");
-                        }
-
-                    }
-                }
-            }
+            //            if (cars.Length > 0)
+            //            {
+            //                await context.Forward(new CarouselCarsDialog(), this.ResumeAfterCarouselCarsDialog, cars, CancellationToken.None);
+            //            }
+            //            else
+            //            {
+            //                await context.PostAsync("Sorry, we couldn't find any cars matching your criteria. Try giving the car model and year only.");
+            //            }
+            //        }
+            //        else
+            //        {
+            //            await context.PostAsync("Sorry, we couldn't find any cars matching your criteria. Please try again.");
+            //        }
+            //    }
+            //}
         }
 
         private async Task HandleSpeech(IDialogContext context, Attachment attachment, string serviceUrl)
@@ -219,6 +222,10 @@ namespace PicklesCarSearch.Dialogs
             {
                 var message = await result;
 
+                //await context.PostAsync("Thanks for contacting Pickles Auctions, come again!");
+
+                //context.Wait(OnFinalDecision);
+
                 PromptDialog.Choice(context, this.OnFinalDecision, new List<string>() { "Restart", "Finish" }, "Would you like to do another search? or call it off for the day?", "Not a valid option", 3);
             }
             catch (Exception ex)
@@ -240,6 +247,8 @@ namespace PicklesCarSearch.Dialogs
                 else
                 {
                     await context.PostAsync("Thanks for contacting Pickles Auctions, come again!");
+
+                    await context.FlushAsync(CancellationToken.None);
                 }                
             }
             catch (TooManyAttemptsException ex)

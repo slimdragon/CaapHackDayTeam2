@@ -39,7 +39,7 @@
             {
                 if (counter < 10)
                 {
-                    items.Add(GetHeroCard(car.make, car.model,
+                    items.Add(GetHeroCard(car.year + " " + car.make.Substring(0,1).ToUpper() + car.make.Substring(1) + " " + car.model, car.price.ToString("C2"),
                                           GetDescription(car.branchaddress, car.branchname, car.colour, car.price),
                                           new CardImage(url: car.bloblurl),
                                           new CardAction(ActionTypes.OpenUrl, "Learn more", value: car.pageurl)));
@@ -57,7 +57,7 @@
 
         private static string GetDescription(string branchaddress, string branchname, string colour, float price)
         {
-            return $"Color: {colour}. Price: {price}. Branch: {branchname}. Address: {branchaddress}.";
+            return $"Branch: {branchname}. Address: {branchaddress}. Color: {colour}.";
         }
 
         private static Attachment GetHeroCard(string title, string subtitle, string text, CardImage cardImage, CardAction cardAction)
